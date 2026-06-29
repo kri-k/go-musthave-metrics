@@ -41,4 +41,26 @@ func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	return v, ok
 }
 
+func (s *MemStorage) GetGauges() []GaugeMetric {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]GaugeMetric, 0, len(s.gauges))
+	for name, value := range s.gauges {
+		result = append(result, GaugeMetric{Name: name, Value: value})
+	}
+	return result
+}
+
+func (s *MemStorage) GetCounters() []CounterMetric {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]CounterMetric, 0, len(s.counters))
+	for name, value := range s.counters {
+		result = append(result, CounterMetric{Name: name, Value: value})
+	}
+	return result
+}
+
 var _ Repository = (*MemStorage)(nil)

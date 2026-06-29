@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"maps"
 	"math/rand"
 	"net/http"
@@ -95,6 +96,7 @@ func (a *Agent) Poll() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	log.Println("polling metrics...")
 	a.gauges["Alloc"] = float64(memStats.Alloc)
 	a.gauges["BuckHashSys"] = float64(memStats.BuckHashSys)
 	a.gauges["Frees"] = float64(memStats.Frees)
@@ -135,6 +137,7 @@ func (a *Agent) Report() {
 	maps.Copy(counters, a.counters)
 	a.mu.Unlock()
 
+	log.Println("reporting metrics...")
 	for name, value := range gauges {
 		a.sendMetric("gauge", name, strconv.FormatFloat(value, 'g', -1, 64))
 	}
