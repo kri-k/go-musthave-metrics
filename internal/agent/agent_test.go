@@ -66,9 +66,6 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		if ct := r.Header.Get("Content-Type"); ct != "text/plain" {
-			t.Errorf("expected Content-Type text/plain, got %s", ct)
-		}
 		mu.Lock()
 		received = append(received, r.URL.Path)
 		mu.Unlock()

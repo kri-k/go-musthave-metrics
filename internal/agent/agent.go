@@ -6,11 +6,12 @@ import (
 	"log"
 	"maps"
 	"math/rand"
-	"net/http"
 	"runtime"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 const (
@@ -23,7 +24,7 @@ type Agent struct {
 	serverAddr     string
 	pollInterval   time.Duration
 	reportInterval time.Duration
-	client         *http.Client
+	client         *resty.Client
 
 	mu       sync.Mutex
 	gauges   map[string]float64
@@ -35,7 +36,7 @@ func NewAgent() *Agent {
 		serverAddr:     defaultServerAddr,
 		pollInterval:   time.Duration(defaultPollInterval) * time.Second,
 		reportInterval: time.Duration(defaultReportInterval) * time.Second,
-		client:         &http.Client{},
+		client:         resty.New(),
 		gauges:         make(map[string]float64),
 		counters:       make(map[string]int64),
 	}
@@ -149,17 +150,10 @@ func (a *Agent) Report() {
 
 func (a *Agent) sendMetric(mType, name, value string) {
 	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	_, err := a.client.R().Post(url)
 	if err != nil {
 		return
 	}
-	req.Header.Set("Content-Type", "text/plain")
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return
-	}
-	resp.Body.Close()
 }
 
 // GetGauge returns a gauge metric value for testing.
