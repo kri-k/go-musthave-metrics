@@ -64,22 +64,23 @@ func (s *MetricsService) GetAllMetrics() []models.Metric {
 	return metrics
 }
 
-func (s *MetricsService) UpdateMetric(mType, name string, value string) error {
+func (s *MetricsService) UpdateMetric(mType, name string, value string) (string, error) {
 	switch mType {
 	case models.Gauge:
 		v, err := util.StringToGauge(value)
 		if err != nil {
-			return err
+			return "", err
 		}
-		s.repo.UpdateGauge(name, v)
+		updatedValue := s.repo.UpdateGauge(name, v)
+		return util.GaugeToString(updatedValue), nil
 	case models.Counter:
 		v, err := util.StringToCounter(value)
 		if err != nil {
-			return err
+			return "", err
 		}
-		s.repo.UpdateCounter(name, v)
+		updatedValue := s.repo.UpdateCounter(name, v)
+		return util.CounterToString(updatedValue), nil
 	default:
-		return fmt.Errorf("unknown metric type: %s", mType)
+		return "", fmt.Errorf("unknown metric type: %s", mType)
 	}
-	return nil
 }

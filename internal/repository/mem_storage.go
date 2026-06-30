@@ -15,16 +15,18 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (s *MemStorage) UpdateGauge(name string, value float64) {
+func (s *MemStorage) UpdateGauge(name string, value float64) float64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gauges[name] = value
+	return value
 }
 
-func (s *MemStorage) UpdateCounter(name string, value int64) {
+func (s *MemStorage) UpdateCounter(name string, value int64) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.counters[name] = value
+	s.counters[name] += value
+	return s.counters[name]
 }
 
 func (s *MemStorage) GetGauge(name string) (float64, bool) {

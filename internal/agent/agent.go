@@ -164,6 +164,7 @@ func (a *Agent) Report() {
 	maps.Copy(gauges, a.gauges)
 	counters := make(map[string]int64, len(a.counters))
 	maps.Copy(counters, a.counters)
+	a.counters["PollCount"] = 0
 	a.mu.Unlock()
 
 	log.Println("reporting metrics...")

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
@@ -51,7 +50,8 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	value := chi.URLParam(r, "value")
 
-	if err := h.service.UpdateMetric(mType, name, value); err != nil {
+	updatedValue, err := h.service.UpdateMetric(mType, name, value)
+	if err != nil {
 		w.Header().Set("Content-Type", "text/plain")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -59,9 +59,5 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	if updatedValue, err := h.service.GetMetric(mType, name); err == nil {
-		w.Write([]byte(updatedValue))
-	} else {
-		log.Printf("error getting metric: %v", err)
-	}
+	w.Write([]byte(updatedValue))
 }
