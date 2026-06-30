@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math/rand"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,17 +33,44 @@ type Agent struct {
 }
 
 func NewAgent() *Agent {
+	return NewAgentWithConfig("", 0, 0)
+}
+
+func NewAgentWithConfig(serverAddr string, pollIntervalSec, reportIntervalSec int) *Agent {
+	if serverAddr == "" {
+		serverAddr = defaultServerAddr
+	} else {
+		serverAddr = normalizeServerAddr(serverAddr)
+	}
+	if pollIntervalSec <= 0 {
+		pollIntervalSec = defaultPollInterval
+	}
+	if reportIntervalSec <= 0 {
+		reportIntervalSec = defaultReportInterval
+	}
+
 	return &Agent{
-		serverAddr:     defaultServerAddr,
-		pollInterval:   time.Duration(defaultPollInterval) * time.Second,
-		reportInterval: time.Duration(defaultReportInterval) * time.Second,
+		serverAddr:     serverAddr,
+		pollInterval:   time.Duration(pollIntervalSec) * time.Second,
+		reportInterval: time.Duration(reportIntervalSec) * time.Second,
 		client:         resty.New(),
 		gauges:         make(map[string]float64),
 		counters:       make(map[string]int64),
 	}
 }
 
+func normalizeServerAddr(addr string) string {
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return addr
+	}
+	return "http://" + addr
+}
+
 func (a *Agent) Run(ctx context.Context) {
+	log.Printf(
+		"starting agent with settings:\nPollInterval: %ds\nReportInterval: %ds\nServerAddr: %s",
+		a.pollInterval/time.Second, a.reportInterval/time.Second, a.serverAddr)
+
 	var wg sync.WaitGroup
 
 	wg.Add(2)
@@ -152,7 +180,7 @@ func (a *Agent) sendMetric(mType, name, value string) {
 	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
 	_, err := a.client.R().Post(url)
 	if err != nil {
-		return
+		log.Printf("failed to send metric: %s", err)
 	}
 }
 

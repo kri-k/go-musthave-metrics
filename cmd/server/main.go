@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -11,7 +12,11 @@ import (
 	"github.com/kri-k/go-musthave-metrics/internal/service"
 )
 
+var addr = flag.String("a", "localhost:8080", "address and port to run server")
+
 func main() {
+	flag.Parse()
+
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricsService(storage)
 	h := handler.NewMetricsHandler(svc)
@@ -22,8 +27,8 @@ func main() {
 	r.Post("/update/{type}/{name}/{value}", h.Update)
 	r.Get("/value/{type}/{name}", h.Value)
 
-	log.Println("Starting server on localhost:8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	log.Printf("Starting server on %s", *addr)
+	if err := http.ListenAndServe(*addr, r); err != nil {
 		log.Fatal(err)
 	}
 }
