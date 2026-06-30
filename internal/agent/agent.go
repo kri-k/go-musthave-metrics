@@ -7,11 +7,11 @@ import (
 	"maps"
 	"math/rand"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
 const (
@@ -140,11 +140,11 @@ func (a *Agent) Report() {
 
 	log.Println("reporting metrics...")
 	for name, value := range gauges {
-		a.sendMetric("gauge", name, strconv.FormatFloat(value, 'g', -1, 64))
+		a.sendMetric("gauge", name, util.GaugeToString(value))
 	}
 
 	for name, value := range counters {
-		a.sendMetric("counter", name, strconv.FormatInt(value, 10))
+		a.sendMetric("counter", name, util.CounterToString(value))
 	}
 }
 

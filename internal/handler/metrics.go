@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
 )
 
@@ -17,18 +18,6 @@ func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
 }
 
 func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if r.URL.Path != "/" {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-
 	stringBuilder := strings.Builder{}
 	for _, m := range h.service.GetAllMetrics() {
 		stringBuilder.WriteString(m.MType)
@@ -43,25 +32,8 @@ func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	if len(parts) != 4 || parts[0] != "value" {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	mType, name, value := parts[1], parts[2], parts[3]
-	if name == "" || value == "" {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
+	mType := chi.URLParam(r, "type")
+	name := chi.URLParam(r, "name")
 
 	value, err := h.service.GetMetric(mType, name)
 	if err != nil {
@@ -75,25 +47,9 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	if len(parts) != 4 || parts[0] != "update" {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	mType, name, value := parts[1], parts[2], parts[3]
-	if name == "" || value == "" {
-		w.Header().Set("Content-Type", "text/plain")
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
+	mType := chi.URLParam(r, "type")
+	name := chi.URLParam(r, "name")
+	value := chi.URLParam(r, "value")
 
 	if err := h.service.UpdateMetric(mType, name, value); err != nil {
 		w.Header().Set("Content-Type", "text/plain")

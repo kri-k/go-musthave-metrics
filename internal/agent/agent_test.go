@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/kri-k/go-musthave-metrics/internal/agent"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPoll_IncrementsPollCount(t *testing.T) {
@@ -15,15 +17,13 @@ func TestPoll_IncrementsPollCount(t *testing.T) {
 
 	a.Poll()
 	v1, ok := a.GetCounter("PollCount")
-	if !ok || v1 != 1 {
-		t.Errorf("expected PollCount=1, got %d (ok=%v)", v1, ok)
-	}
+	assert.True(t, ok)
+	assert.Equal(t, int64(1), v1)
 
 	a.Poll()
 	v2, ok := a.GetCounter("PollCount")
-	if !ok || v2 != 2 {
-		t.Errorf("expected PollCount=2, got %d (ok=%v)", v2, ok)
-	}
+	assert.True(t, ok)
+	assert.Equal(t, int64(2), v2)
 }
 
 func TestPoll_CollectsRuntimeMetrics(t *testing.T) {
@@ -41,7 +41,7 @@ func TestPoll_CollectsRuntimeMetrics(t *testing.T) {
 
 	for _, name := range expectedGauges {
 		if _, ok := a.GetGauge(name); !ok {
-			t.Errorf("expected gauge %s to be collected", name)
+			assert.True(t, ok, "expected gauge %s to be collected", name)
 		}
 	}
 }
@@ -53,9 +53,7 @@ func TestPoll_UpdatesRandomValue(t *testing.T) {
 	a.Poll()
 	v2, _ := a.GetGauge("RandomValue")
 
-	if v1 == v2 {
-		t.Errorf("expected RandomValue to change between polls, got %f and %f", v1, v2)
-	}
+	assert.NotEqual(t, v1, v2, "expected RandomValue to change between the polls")
 }
 
 func TestReport_SendsMetricsToServer(t *testing.T) {
@@ -81,9 +79,7 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if len(received) == 0 {
-		t.Fatal("expected metrics to be sent to server")
-	}
+	require.NotEmpty(t, received, "expected metrics to be sent to server")
 
 	foundPollCount := false
 	foundAlloc := false
@@ -96,10 +92,6 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 		}
 	}
 
-	if !foundPollCount {
-		t.Error("expected PollCount counter to be sent")
-	}
-	if !foundAlloc {
-		t.Error("expected Alloc gauge to be sent")
-	}
+	assert.True(t, foundPollCount, "expected PollCount counter to be sent")
+	assert.True(t, foundAlloc, "expected Alloc gauge to be sent")
 }
