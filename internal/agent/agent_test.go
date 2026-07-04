@@ -16,12 +16,12 @@ func TestPoll_IncrementsPollCount(t *testing.T) {
 	a := agent.NewAgent()
 
 	a.Poll()
-	v1, ok := a.GetCounter("PollCount")
+	v1, ok := a.GetCounterForTest("PollCount")
 	assert.True(t, ok)
 	assert.Equal(t, int64(1), v1)
 
 	a.Poll()
-	v2, ok := a.GetCounter("PollCount")
+	v2, ok := a.GetCounterForTest("PollCount")
 	assert.True(t, ok)
 	assert.Equal(t, int64(2), v2)
 }
@@ -40,7 +40,7 @@ func TestPoll_CollectsRuntimeMetrics(t *testing.T) {
 	}
 
 	for _, name := range expectedGauges {
-		if _, ok := a.GetGauge(name); !ok {
+		if _, ok := a.GetGaugeForTest(name); !ok {
 			assert.True(t, ok, "expected gauge %s to be collected", name)
 		}
 	}
@@ -49,9 +49,9 @@ func TestPoll_CollectsRuntimeMetrics(t *testing.T) {
 func TestPoll_UpdatesRandomValue(t *testing.T) {
 	a := agent.NewAgent()
 	a.Poll()
-	v1, _ := a.GetGauge("RandomValue")
+	v1, _ := a.GetGaugeForTest("RandomValue")
 	a.Poll()
-	v2, _ := a.GetGauge("RandomValue")
+	v2, _ := a.GetGaugeForTest("RandomValue")
 
 	assert.NotEqual(t, v1, v2, "expected RandomValue to change between the polls")
 }
@@ -71,8 +71,7 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := agent.NewAgent()
-	a.SetServerAddr(server.URL)
+	a := agent.NewAgentWithConfig(server.URL, 0, 0)
 	a.Poll()
 	a.Report()
 

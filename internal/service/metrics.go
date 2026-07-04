@@ -48,17 +48,19 @@ func (s *MetricsService) GetAllMetrics() []models.Metric {
 
 	metrics := make([]models.Metric, 0, len(gauges)+len(counters))
 	for _, g := range gauges {
+		v := g.Value
 		metrics = append(metrics, models.Metric{
 			ID:    g.Name,
 			MType: models.Gauge,
-			Value: util.GaugeToString(g.Value),
+			Value: &v,
 		})
 	}
 	for _, c := range counters {
+		d := c.Value
 		metrics = append(metrics, models.Metric{
 			ID:    c.Name,
 			MType: models.Counter,
-			Value: util.CounterToString(c.Value),
+			Delta: &d,
 		})
 	}
 	return metrics

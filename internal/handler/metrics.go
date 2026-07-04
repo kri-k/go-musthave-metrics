@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
+	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
 type MetricsHandler struct {
@@ -16,14 +18,14 @@ func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
 	return &MetricsHandler{service: s}
 }
 
-func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
+func (h *MetricsHandler) Index(w http.ResponseWriter, _ *http.Request) {
 	stringBuilder := strings.Builder{}
 	for _, m := range h.service.GetAllMetrics() {
 		stringBuilder.WriteString(m.MType)
 		stringBuilder.WriteRune(' ')
 		stringBuilder.WriteString(m.ID)
 		stringBuilder.WriteRune(' ')
-		stringBuilder.WriteString(m.Value)
+		stringBuilder.WriteString(metricValueString(m))
 		stringBuilder.WriteRune('\n')
 	}
 	w.Header().Set("Content-Type", "text/plain")
@@ -60,4 +62,18 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(updatedValue))
+}
+
+func metricValueString(m models.Metric) string {
+	switch m.MType {
+	case models.Gauge:
+		if m.Value != nil {
+			return util.GaugeToString(*m.Value)
+		}
+	case models.Counter:
+		if m.Delta != nil {
+			return util.CounterToString(*m.Delta)
+		}
+	}
+	return ""
 }

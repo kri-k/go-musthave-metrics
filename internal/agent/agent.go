@@ -6,6 +6,7 @@ import (
 	"log"
 	"maps"
 	"math/rand"
+	"net/http"
 	"runtime"
 	"strings"
 	"sync"
@@ -179,29 +180,25 @@ func (a *Agent) Report() {
 
 func (a *Agent) sendMetric(mType, name, value string) {
 	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
-	_, err := a.client.R().Post(url)
+	r, err := a.client.R().Post(url)
 	if err != nil {
 		log.Printf("failed to send metric: %s", err)
 	}
+	if r.StatusCode() != http.StatusOK {
+		log.Printf("failed to send metric: %s", r.Status())
+	}
 }
 
-// GetGauge returns a gauge metric value for testing.
-func (a *Agent) GetGauge(name string) (float64, bool) {
+func (a *Agent) GetGaugeForTest(name string) (float64, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	v, ok := a.gauges[name]
 	return v, ok
 }
 
-// GetCounter returns a counter metric value for testing.
-func (a *Agent) GetCounter(name string) (int64, bool) {
+func (a *Agent) GetCounterForTest(name string) (int64, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	v, ok := a.counters[name]
 	return v, ok
-}
-
-// SetServerAddr sets the server address for testing.
-func (a *Agent) SetServerAddr(addr string) {
-	a.serverAddr = addr
 }
