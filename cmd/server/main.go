@@ -10,12 +10,14 @@ import (
 	"github.com/kri-k/go-musthave-metrics/internal/handler"
 	"github.com/kri-k/go-musthave-metrics/internal/repository"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
+	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
-var addr = flag.String("a", "localhost:8080", "address and port to run server")
+var flagAddr = flag.String("a", "localhost:8080", "address and port to run server")
 
 func main() {
 	flag.Parse()
+	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
 
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricsService(storage)
@@ -27,8 +29,8 @@ func main() {
 	r.Post("/update/{type}/{name}/{value}", h.Update)
 	r.Get("/value/{type}/{name}", h.Value)
 
-	log.Printf("Starting server on %s", *addr)
-	if err := http.ListenAndServe(*addr, r); err != nil {
+	log.Printf("Starting server on %s", addr)
+	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
 	}
 }
