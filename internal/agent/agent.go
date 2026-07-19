@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"maps"
 	"math/rand"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
 	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
@@ -68,9 +68,12 @@ func normalizeServerAddr(addr string) string {
 }
 
 func (a *Agent) Run(ctx context.Context) {
-	log.Printf(
-		"starting agent with settings:\nPollInterval: %ds\nReportInterval: %ds\nServerAddr: %s",
-		a.pollInterval/time.Second, a.reportInterval/time.Second, a.serverAddr)
+	logger.Sugar.Infow(
+		"starting agent with settings",
+		"pollInterval", a.pollInterval,
+		"reportInterval", a.reportInterval,
+		"serverAddr", a.serverAddr,
+	)
 
 	var wg sync.WaitGroup
 
@@ -126,7 +129,7 @@ func (a *Agent) Poll() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	log.Println("polling metrics...")
+	logger.Log.Info("polling metrics...")
 	a.gauges["Alloc"] = float64(memStats.Alloc)
 	a.gauges["BuckHashSys"] = float64(memStats.BuckHashSys)
 	a.gauges["Frees"] = float64(memStats.Frees)
@@ -168,7 +171,7 @@ func (a *Agent) Report() {
 	a.counters["PollCount"] = 0
 	a.mu.Unlock()
 
-	log.Println("reporting metrics...")
+	logger.Log.Info("reporting metrics...")
 	for name, value := range gauges {
 		a.sendMetric("gauge", name, util.GaugeToString(value))
 	}
@@ -182,10 +185,9 @@ func (a *Agent) sendMetric(mType, name, value string) {
 	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
 	r, err := a.client.R().Post(url)
 	if err != nil {
-		log.Printf("failed to send metric: %s", err)
-	}
-	if r.StatusCode() != http.StatusOK {
-		log.Printf("failed to send metric: %s", r.Status())
+		logger.Sugar.Errorf("failed to send metric: %s", err)
+	} else if r.StatusCode() != http.StatusOK {
+		logger.Sugar.Errorf("failed to send metric: response status %s", r.Status())
 	}
 }
 

@@ -2,12 +2,11 @@ package main
 
 import (
 	"flag"
-	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/kri-k/go-musthave-metrics/internal/handler"
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
 	"github.com/kri-k/go-musthave-metrics/internal/repository"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
 	"github.com/kri-k/go-musthave-metrics/internal/util"
@@ -16,6 +15,9 @@ import (
 var flagAddr = flag.String("a", "localhost:8080", "address and port to run server")
 
 func main() {
+	logger.Initialize("INFO")
+	defer logger.Log.Sync()
+
 	flag.Parse()
 	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
 
@@ -24,13 +26,13 @@ func main() {
 	h := handler.NewMetricsHandler(svc)
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	r.Use(logger.WithLogging)
 	r.Get("/", h.Index)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
 	r.Get("/value/{type}/{name}", h.Value)
 
-	log.Printf("Starting server on %s", addr)
+	logger.Sugar.Info("Starting server on ", addr)
 	if err := http.ListenAndServe(addr, r); err != nil {
-		log.Fatal(err)
+		logger.Log.Fatal(err.Error())
 	}
 }

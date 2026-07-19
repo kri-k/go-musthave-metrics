@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 
 	"github.com/kri-k/go-musthave-metrics/internal/agent"
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
 	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
@@ -20,6 +20,9 @@ var (
 )
 
 func main() {
+	logger.Initialize("INFO")
+	defer logger.Log.Sync()
+
 	flag.Parse()
 
 	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
@@ -31,5 +34,5 @@ func main() {
 
 	a := agent.NewAgentWithConfig(addr, pollInterval, reportInterval)
 	a.Run(ctx)
-	log.Println("agent stopped")
+	logger.Log.Info("agent stopped")
 }
