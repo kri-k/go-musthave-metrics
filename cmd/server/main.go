@@ -28,7 +28,9 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(logger.WithLogging)
 	r.Get("/", h.Index)
+	r.Post("/update", h.UpdateJSON)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
+	r.Post("/value", h.ValueJSON)
 	r.Get("/value/{type}/{name}", h.Value)
 
 	logger.Sugar.Info("Starting server on ", addr)

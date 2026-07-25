@@ -35,7 +35,24 @@ func (s *MetricsService) GetMetric(mType, name string) (string, error) {
 	}
 }
 
-func (s *MetricsService) GetAllMetrics() []models.Metric {
+func (s *MetricsService) GetMetricJSON(mType, name string) (models.Metrics, error) {
+	switch mType {
+	case models.Gauge:
+		if v, ok := s.repo.GetGauge(name); ok {
+			return models.Metrics{ID: name, MType: models.Gauge, Value: &v}, nil
+		}
+		return models.Metrics{}, fmt.Errorf("gauge %s not found", name)
+	case models.Counter:
+		if v, ok := s.repo.GetCounter(name); ok {
+			return models.Metrics{ID: name, MType: models.Counter, Delta: &v}, nil
+		}
+		return models.Metrics{}, fmt.Errorf("counter %s not found", name)
+	default:
+		return models.Metrics{}, fmt.Errorf("unknown metric type: %s", mType)
+	}
+}
+
+func (s *MetricsService) GetAllMetrics() []models.Metrics {
 	gauges := s.repo.GetGauges()
 	slices.SortFunc(gauges, func(a, b repository.GaugeMetric) int {
 		return cmp.Compare(a.Name, b.Name)
@@ -46,10 +63,10 @@ func (s *MetricsService) GetAllMetrics() []models.Metric {
 		return cmp.Compare(a.Name, b.Name)
 	})
 
-	metrics := make([]models.Metric, 0, len(gauges)+len(counters))
+	metrics := make([]models.Metrics, 0, len(gauges)+len(counters))
 	for _, g := range gauges {
 		v := g.Value
-		metrics = append(metrics, models.Metric{
+		metrics = append(metrics, models.Metrics{
 			ID:    g.Name,
 			MType: models.Gauge,
 			Value: &v,
@@ -57,7 +74,7 @@ func (s *MetricsService) GetAllMetrics() []models.Metric {
 	}
 	for _, c := range counters {
 		d := c.Value
-		metrics = append(metrics, models.Metric{
+		metrics = append(metrics, models.Metrics{
 			ID:    c.Name,
 			MType: models.Counter,
 			Delta: &d,
@@ -84,5 +101,28 @@ func (s *MetricsService) UpdateMetric(mType, name string, value string) (string,
 		return util.CounterToString(updatedValue), nil
 	default:
 		return "", fmt.Errorf("unknown metric type: %s", mType)
+	}
+}
+
+func (s *MetricsService) UpdateMetricJSON(m models.Metrics) (models.Metrics, error) {
+	if m.ID == "" {
+		return models.Metrics{}, fmt.Errorf("metric id is required")
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if m.Value == nil {
+			return models.Metrics{}, fmt.Errorf("value is required for gauge")
+		}
+		v := s.repo.UpdateGauge(m.ID, *m.Value)
+		return models.Metrics{ID: m.ID, MType: models.Gauge, Value: &v}, nil
+	case models.Counter:
+		if m.Delta == nil {
+			return models.Metrics{}, fmt.Errorf("delta is required for counter")
+		}
+		d := s.repo.UpdateCounter(m.ID, *m.Delta)
+		return models.Metrics{ID: m.ID, MType: models.Counter, Delta: &d}, nil
+	default:
+		return models.Metrics{}, fmt.Errorf("unknown metric type: %s", m.MType)
 	}
 }

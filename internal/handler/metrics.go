@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -47,6 +48,24 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(value))
 }
 
+func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
+	var m models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.service.GetMetricJSON(m.MType, m.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+}
+
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
 	name := chi.URLParam(r, "name")
@@ -64,7 +83,25 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(updatedValue))
 }
 
-func metricValueString(m models.Metric) string {
+func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
+	var m models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	updated, err := h.service.UpdateMetricJSON(m)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(updated)
+}
+
+func metricValueString(m models.Metrics) string {
 	switch m.MType {
 	case models.Gauge:
 		if m.Value != nil {

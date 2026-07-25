@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/kri-k/go-musthave-metrics/internal/logger"
-	"github.com/kri-k/go-musthave-metrics/internal/util"
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
 )
 
 const (
@@ -173,17 +173,30 @@ func (a *Agent) Report() {
 
 	logger.Log.Info("reporting metrics...")
 	for name, value := range gauges {
-		a.sendMetric("gauge", name, util.GaugeToString(value))
+		v := value
+		a.sendMetric(models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &v,
+		})
 	}
 
 	for name, value := range counters {
-		a.sendMetric("counter", name, util.CounterToString(value))
+		d := value
+		a.sendMetric(models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &d,
+		})
 	}
 }
 
-func (a *Agent) sendMetric(mType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
-	r, err := a.client.R().Post(url)
+func (a *Agent) sendMetric(m models.Metrics) {
+	url := fmt.Sprintf("%s/update", a.serverAddr)
+	r, err := a.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(m).
+		Post(url)
 	if err != nil {
 		logger.Sugar.Errorf("failed to send metric: %s", err)
 	} else if r.StatusCode() != http.StatusOK {
