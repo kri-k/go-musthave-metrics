@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"math/rand"
@@ -192,16 +195,37 @@ func (a *Agent) Report() {
 }
 
 func (a *Agent) sendMetric(m models.Metrics) {
+	body, err := compressJSON(m)
+	if err != nil {
+		logger.Sugar.Errorf("failed to compress metric: %s", err)
+		return
+	}
+
 	url := fmt.Sprintf("%s/update", a.serverAddr)
 	r, err := a.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(m).
+		SetHeader("Content-Encoding", "gzip").
+		SetHeader("Accept-Encoding", "gzip").
+		SetBody(body).
 		Post(url)
 	if err != nil {
 		logger.Sugar.Errorf("failed to send metric: %s", err)
 	} else if r.StatusCode() != http.StatusOK {
 		logger.Sugar.Errorf("failed to send metric: response status %s", r.Status())
 	}
+}
+
+func compressJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(zw).Encode(v); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (a *Agent) GetGaugeForTest(name string) (float64, bool) {

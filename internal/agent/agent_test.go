@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -68,8 +69,14 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 		}
 		assert.Equal(t, "/update", r.URL.Path)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+		assert.Contains(t, r.Header.Get("Accept-Encoding"), "gzip")
 
-		body, err := io.ReadAll(r.Body)
+		gr, err := gzip.NewReader(r.Body)
+		require.NoError(t, err)
+		defer gr.Close()
+
+		body, err := io.ReadAll(gr)
 		require.NoError(t, err)
 
 		var m models.Metrics

@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/kri-k/go-musthave-metrics/internal/handler"
 	"github.com/kri-k/go-musthave-metrics/internal/logger"
+	"github.com/kri-k/go-musthave-metrics/internal/middleware"
 	"github.com/kri-k/go-musthave-metrics/internal/repository"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
 	"github.com/kri-k/go-musthave-metrics/internal/util"
@@ -27,6 +28,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(logger.WithLogging)
+	r.Use(middleware.Gzip)
 	r.Get("/", h.Index)
 	r.Post("/update", h.UpdateJSON)
 	r.Post("/update/{type}/{name}/{value}", h.Update)

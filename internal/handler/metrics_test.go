@@ -2,13 +2,16 @@ package handler_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kri-k/go-musthave-metrics/internal/handler"
+	"github.com/kri-k/go-musthave-metrics/internal/middleware"
 	models "github.com/kri-k/go-musthave-metrics/internal/model"
 	"github.com/kri-k/go-musthave-metrics/internal/repository"
 	"github.com/kri-k/go-musthave-metrics/internal/service"
@@ -22,6 +25,7 @@ func newTestRouter() (http.Handler, repository.Repository) {
 	h := handler.NewMetricsHandler(svc)
 
 	r := chi.NewRouter()
+	r.Use(middleware.Gzip)
 	r.Get("/", h.Index)
 	r.Post("/update", h.UpdateJSON)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
@@ -237,4 +241,91 @@ func TestValueJSON_NotFound(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestUpdateJSON_GzipRequest(t *testing.T) {
+	router, storage := newTestRouter()
+
+	value := 42.5
+	payload, err := json.Marshal(models.Metrics{
+		ID:    "Alloc",
+		MType: models.Gauge,
+		Value: &value,
+	})
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err = zw.Write(payload)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/update", &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	v, ok := storage.GetGauge("Alloc")
+	assert.True(t, ok)
+	assert.Equal(t, value, v)
+}
+
+func TestValueJSON_GzipResponse(t *testing.T) {
+	router, storage := newTestRouter()
+	storage.UpdateGauge("Alloc", 100)
+
+	body, err := json.Marshal(models.Metrics{
+		ID:    "Alloc",
+		MType: models.Gauge,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/value", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "gzip", rec.Header().Get("Content-Encoding"))
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	gr, err := gzip.NewReader(rec.Body)
+	require.NoError(t, err)
+	defer gr.Close()
+
+	decoded, err := io.ReadAll(gr)
+	require.NoError(t, err)
+
+	var resp models.Metrics
+	require.NoError(t, json.Unmarshal(decoded, &resp))
+	require.NotNil(t, resp.Value)
+	assert.Equal(t, 100.0, *resp.Value)
+}
+
+func TestIndex_GzipHTMLResponse(t *testing.T) {
+	router, storage := newTestRouter()
+	storage.UpdateGauge("Alloc", 1)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/html", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "gzip", rec.Header().Get("Content-Encoding"))
+
+	gr, err := gzip.NewReader(rec.Body)
+	require.NoError(t, err)
+	defer gr.Close()
+
+	body, err := io.ReadAll(gr)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "Alloc")
 }

@@ -21,15 +21,18 @@ func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
 
 func (h *MetricsHandler) Index(w http.ResponseWriter, _ *http.Request) {
 	stringBuilder := strings.Builder{}
+	stringBuilder.WriteString("<html><body>")
 	for _, m := range h.service.GetAllMetrics() {
+		stringBuilder.WriteString("<div>")
 		stringBuilder.WriteString(m.MType)
 		stringBuilder.WriteRune(' ')
 		stringBuilder.WriteString(m.ID)
 		stringBuilder.WriteRune(' ')
 		stringBuilder.WriteString(metricValueString(m))
-		stringBuilder.WriteRune('\n')
+		stringBuilder.WriteString("</div>")
 	}
-	w.Header().Set("Content-Type", "text/plain")
+	stringBuilder.WriteString("</body></html>")
+	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(stringBuilder.String()))
 }
 
