@@ -26,8 +26,16 @@ func main() {
 	flag.Parse()
 
 	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
-	reportInterval := util.GetEnvOrDefault("REPORT_INTERVAL", *flagReportInterval, strconv.Atoi)
-	pollInterval := util.GetEnvOrDefault("POLL_INTERVAL", *flagPollInterval, strconv.Atoi)
+
+	reportInterval, err := util.GetEnvOrDefault("REPORT_INTERVAL", *flagReportInterval, strconv.Atoi)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
+
+	pollInterval, err := util.GetEnvOrDefault("POLL_INTERVAL", *flagPollInterval, strconv.Atoi)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

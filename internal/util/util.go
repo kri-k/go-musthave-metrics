@@ -31,14 +31,17 @@ func StringToCounter(value string) (int64, error) {
 }
 
 func GetEnvOrDefaultString(envVar, defaultValue string) string {
-	return GetEnvOrDefault(envVar, defaultValue, func(s string) (string, error) { return s, nil })
+	v, _ := GetEnvOrDefault(envVar, defaultValue, func(s string) (string, error) { return s, nil })
+	return v
 }
 
-func GetEnvOrDefault[T any](envVar string, defaultValue T, converter func(string) (T, error)) T {
+func GetEnvOrDefault[T any](envVar string, defaultValue T, converter func(string) (T, error)) (T, error) {
 	if envValue := os.Getenv(envVar); envValue != "" {
-		if v, err := converter(envValue); err == nil {
-			return v
+		v, err := converter(envValue)
+		if err != nil {
+			return defaultValue, err
 		}
+		return v, nil
 	}
-	return defaultValue
+	return defaultValue, nil
 }

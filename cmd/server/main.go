@@ -34,9 +34,17 @@ func main() {
 	flag.Parse()
 
 	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
-	storeInterval := util.GetEnvOrDefault("STORE_INTERVAL", *flagStoreInterval, strconv.Atoi)
 	fileStoragePath := util.GetEnvOrDefaultString("FILE_STORAGE_PATH", *flagFileStorage)
-	restore := util.GetEnvOrDefault("RESTORE", *flagRestore, strconv.ParseBool)
+
+	storeInterval, err := util.GetEnvOrDefault("STORE_INTERVAL", *flagStoreInterval, strconv.Atoi)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
+
+	restore, err := util.GetEnvOrDefault("RESTORE", *flagRestore, strconv.ParseBool)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
 
 	storage := repository.NewMemStorage()
 
