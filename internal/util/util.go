@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 )
 
@@ -27,4 +28,20 @@ func StringToCounter(value string) (int64, error) {
 		return 0, fmt.Errorf("invalid counter value: %w", err)
 	}
 	return v, nil
+}
+
+func GetEnvOrDefaultString(envVar, defaultValue string) string {
+	v, _ := GetEnvOrDefault(envVar, defaultValue, func(s string) (string, error) { return s, nil })
+	return v
+}
+
+func GetEnvOrDefault[T any](envVar string, defaultValue T, converter func(string) (T, error)) (T, error) {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		v, err := converter(envValue)
+		if err != nil {
+			return defaultValue, err
+		}
+		return v, nil
+	}
+	return defaultValue, nil
 }

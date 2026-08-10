@@ -1,13 +1,16 @@
 package agent_test
 
 import (
+	"compress/gzip"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/kri-k/go-musthave-metrics/internal/agent"
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,16 +61,34 @@ func TestPoll_UpdatesRandomValue(t *testing.T) {
 
 func TestReport_SendsMetricsToServer(t *testing.T) {
 	var mu sync.Mutex
-	received := make([]string, 0)
+	received := make([]models.Metrics, 0)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
+		assert.Equal(t, "/update", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+		assert.Contains(t, r.Header.Get("Accept-Encoding"), "gzip")
+
+		gr, err := gzip.NewReader(r.Body)
+		require.NoError(t, err)
+		defer gr.Close()
+
+		body, err := io.ReadAll(gr)
+		require.NoError(t, err)
+
+		var m models.Metrics
+		require.NoError(t, json.Unmarshal(body, &m))
+
 		mu.Lock()
-		received = append(received, r.URL.Path)
+		received = append(received, m)
 		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(m)
 	}))
 	defer server.Close()
 
@@ -82,11 +103,14 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 
 	foundPollCount := false
 	foundAlloc := false
-	for _, path := range received {
-		if path == "/update/counter/PollCount/1" {
+	for _, m := range received {
+		if m.ID == "PollCount" && m.MType == models.Counter {
+			require.NotNil(t, m.Delta)
+			assert.Equal(t, int64(1), *m.Delta)
 			foundPollCount = true
 		}
-		if strings.HasPrefix(path, "/update/gauge/Alloc/") {
+		if m.ID == "Alloc" && m.MType == models.Gauge {
+			require.NotNil(t, m.Value)
 			foundAlloc = true
 		}
 	}

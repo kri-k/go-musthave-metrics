@@ -3,27 +3,44 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/kri-k/go-musthave-metrics/internal/agent"
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
+	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
 
 var (
-	addr           = flag.String("a", "localhost:8080", "address and port to run server")
-	reportInterval = flag.Int("r", 10, "frequency of sending metrics to the server")
-	pollInterval   = flag.Int("p", 2, "frequency of polling metrics from the runtime package")
+	flagAddr           = flag.String("a", "localhost:8080", "address and port to run server")
+	flagReportInterval = flag.Int("r", 10, "frequency of sending metrics to the server")
+	flagPollInterval   = flag.Int("p", 2, "frequency of polling metrics from the runtime package")
 )
 
 func main() {
+	logger.Initialize("INFO")
+	defer logger.Log.Sync()
+
 	flag.Parse()
+
+	addr := util.GetEnvOrDefaultString("ADDRESS", *flagAddr)
+
+	reportInterval, err := util.GetEnvOrDefault("REPORT_INTERVAL", *flagReportInterval, strconv.Atoi)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
+
+	pollInterval, err := util.GetEnvOrDefault("POLL_INTERVAL", *flagPollInterval, strconv.Atoi)
+	if err != nil {
+		logger.Sugar.Fatalln(err.Error())
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	a := agent.NewAgentWithConfig(*addr, *pollInterval, *reportInterval)
+	a := agent.NewAgentWithConfig(addr, pollInterval, reportInterval)
 	a.Run(ctx)
-	log.Println("agent stopped")
+	logger.Log.Info("agent stopped")
 }

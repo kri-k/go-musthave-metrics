@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
 	"maps"
 	"math/rand"
 	"net/http"
@@ -13,7 +15,8 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/kri-k/go-musthave-metrics/internal/util"
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
 )
 
 const (
@@ -68,9 +71,12 @@ func normalizeServerAddr(addr string) string {
 }
 
 func (a *Agent) Run(ctx context.Context) {
-	log.Printf(
-		"starting agent with settings:\nPollInterval: %ds\nReportInterval: %ds\nServerAddr: %s",
-		a.pollInterval/time.Second, a.reportInterval/time.Second, a.serverAddr)
+	logger.Sugar.Infow(
+		"starting agent with settings",
+		"pollInterval", a.pollInterval,
+		"reportInterval", a.reportInterval,
+		"serverAddr", a.serverAddr,
+	)
 
 	var wg sync.WaitGroup
 
@@ -126,7 +132,7 @@ func (a *Agent) Poll() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	log.Println("polling metrics...")
+	logger.Log.Info("polling metrics...")
 	a.gauges["Alloc"] = float64(memStats.Alloc)
 	a.gauges["BuckHashSys"] = float64(memStats.BuckHashSys)
 	a.gauges["Frees"] = float64(memStats.Frees)
@@ -168,25 +174,58 @@ func (a *Agent) Report() {
 	a.counters["PollCount"] = 0
 	a.mu.Unlock()
 
-	log.Println("reporting metrics...")
+	logger.Log.Info("reporting metrics...")
 	for name, value := range gauges {
-		a.sendMetric("gauge", name, util.GaugeToString(value))
+		v := value
+		a.sendMetric(models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &v,
+		})
 	}
 
 	for name, value := range counters {
-		a.sendMetric("counter", name, util.CounterToString(value))
+		d := value
+		a.sendMetric(models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &d,
+		})
 	}
 }
 
-func (a *Agent) sendMetric(mType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", a.serverAddr, mType, name, value)
-	r, err := a.client.R().Post(url)
+func (a *Agent) sendMetric(m models.Metrics) {
+	body, err := compressJSON(m)
 	if err != nil {
-		log.Printf("failed to send metric: %s", err)
+		logger.Sugar.Errorf("failed to compress metric: %s", err)
+		return
 	}
-	if r.StatusCode() != http.StatusOK {
-		log.Printf("failed to send metric: %s", r.Status())
+
+	url := fmt.Sprintf("%s/update", a.serverAddr)
+	r, err := a.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Content-Encoding", "gzip").
+		SetHeader("Accept-Encoding", "gzip").
+		SetBody(body).
+		Post(url)
+	if err != nil {
+		logger.Sugar.Errorf("failed to send metric: %s", err)
+	} else if r.StatusCode() != http.StatusOK {
+		logger.Sugar.Errorf("failed to send metric: response status %s", r.Status())
 	}
+}
+
+func compressJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(zw).Encode(v); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (a *Agent) GetGaugeForTest(name string) (float64, bool) {
