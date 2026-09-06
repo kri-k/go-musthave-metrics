@@ -1,10 +1,18 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/kri-k/go-musthave-metrics/migrations"
 )
 
 func NewPostgres(dsn string) (*sql.DB, error) {
@@ -17,5 +25,43 @@ func NewPostgres(dsn string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := database.PingContext(ctx); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+
+	if err := runMigrations(database); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
 	return database, nil
+}
+
+func runMigrations(database *sql.DB) error {
+	driver, err := postgres.WithInstance(database, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("create migrate driver: %w", err)
+	}
+
+	source, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return fmt.Errorf("create migrate source: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		return fmt.Errorf("create migrator: %w", err)
+	}
+	defer func() {
+		_, _ = m.Close()
+	}()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	return nil
 }

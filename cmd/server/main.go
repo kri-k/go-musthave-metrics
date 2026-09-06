@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"net/http"
 	"os"
@@ -57,20 +58,7 @@ func main() {
 		defer database.Close()
 	}
 
-	storage := repository.NewMemStorage()
-
-	if restore {
-		if err := storage.LoadFromFile(fileStoragePath); err != nil {
-			logger.Sugar.Errorw("failed to restore metrics", "error", err)
-		} else {
-			logger.Sugar.Infow("metrics restored", "path", fileStoragePath)
-		}
-	}
-
-	var repo repository.Repository = storage
-	if storeInterval == 0 {
-		repo = repository.NewSyncFileStorage(storage, fileStoragePath)
-	}
+	repo, memStorage := newRepository(database, fileStoragePath, storeInterval, restore)
 
 	svc := service.NewMetricsService(repo)
 	h := handler.NewMetricsHandler(svc)
@@ -90,8 +78,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if storeInterval > 0 {
-		go storePeriodically(ctx, storage, fileStoragePath, time.Duration(storeInterval)*time.Second)
+	if memStorage != nil && fileStoragePath != "" && storeInterval > 0 {
+		go storePeriodically(ctx, memStorage, fileStoragePath, time.Duration(storeInterval)*time.Second)
 	}
 
 	server := &http.Server{Addr: addr, Handler: r}
@@ -118,11 +106,39 @@ func main() {
 		logger.Sugar.Errorw("server shutdown error", "error", err)
 	}
 
-	if err := storage.SaveToFile(fileStoragePath); err != nil {
-		logger.Sugar.Errorw("failed to save metrics on shutdown", "error", err)
-	} else {
-		logger.Sugar.Infow("metrics saved", "path", fileStoragePath)
+	if memStorage != nil && fileStoragePath != "" {
+		if err := memStorage.SaveToFile(fileStoragePath); err != nil {
+			logger.Sugar.Errorw("failed to save metrics on shutdown", "error", err)
+		} else {
+			logger.Sugar.Infow("metrics saved", "path", fileStoragePath)
+		}
 	}
+}
+
+func newRepository(database *sql.DB, fileStoragePath string, storeInterval int, restore bool) (repository.Repository, *repository.MemStorage) {
+	if database != nil {
+		logger.Sugar.Info("using postgres storage")
+		return repository.NewPostgresStorage(database), nil
+	}
+
+	if fileStoragePath != "" {
+		storage := repository.NewMemStorage()
+		if restore {
+			if err := storage.LoadFromFile(fileStoragePath); err != nil {
+				logger.Sugar.Errorw("failed to restore metrics", "error", err)
+			} else {
+				logger.Sugar.Infow("metrics restored", "path", fileStoragePath)
+			}
+		}
+		if storeInterval == 0 {
+			return repository.NewSyncFileStorage(storage, fileStoragePath), storage
+		}
+		return storage, storage
+	}
+
+	logger.Sugar.Info("using memory storage")
+	storage := repository.NewMemStorage()
+	return storage, storage
 }
 
 func storePeriodically(ctx context.Context, storage *repository.MemStorage, path string, interval time.Duration) {
