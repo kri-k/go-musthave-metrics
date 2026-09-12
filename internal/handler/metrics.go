@@ -108,6 +108,24 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *MetricsHandler) UpdatesJSON(w http.ResponseWriter, r *http.Request) {
+	var metrics []models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.UpdateMetrics(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func metricValueString(m models.Metrics) string {
 	switch m.MType {
 	case models.Gauge:

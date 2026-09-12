@@ -72,6 +72,7 @@ func main() {
 	r.Get("/ping", pingHandler.Ping)
 	r.Post("/update", h.UpdateJSON)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
+	r.Post("/updates", h.UpdatesJSON)
 	r.Post("/value", h.ValueJSON)
 	r.Get("/value/{type}/{name}", h.Value)
 

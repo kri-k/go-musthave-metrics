@@ -53,6 +53,67 @@ func (s *PostgresStorage) UpdateCounter(name string, value int64) int64 {
 	return result
 }
 
+func (s *PostgresStorage) UpdateMetrics(metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Sugar.Errorw("failed to begin metrics transaction", "error", err)
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	gaugeStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO metrics (id, mtype, value)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id, mtype) DO UPDATE SET value = EXCLUDED.value
+	`)
+	if err != nil {
+		logger.Sugar.Errorw("failed to prepare gauge statement", "error", err)
+		return err
+	}
+	defer gaugeStmt.Close()
+
+	counterStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO metrics (id, mtype, delta)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id, mtype) DO UPDATE SET delta = metrics.delta + EXCLUDED.delta
+	`)
+	if err != nil {
+		logger.Sugar.Errorw("failed to prepare counter statement", "error", err)
+		return err
+	}
+	defer counterStmt.Close()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if _, err := gaugeStmt.ExecContext(ctx, m.ID, models.Gauge, *m.Value); err != nil {
+				logger.Sugar.Errorw("failed to update gauge", "id", m.ID, "error", err)
+				return err
+			}
+		case models.Counter:
+			if _, err := counterStmt.ExecContext(ctx, m.ID, models.Counter, *m.Delta); err != nil {
+				logger.Sugar.Errorw("failed to update counter", "id", m.ID, "error", err)
+				return err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.Sugar.Errorw("failed to commit metrics transaction", "error", err)
+		return err
+	}
+	return nil
+}
+
 func (s *PostgresStorage) GetGauge(name string) (float64, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()

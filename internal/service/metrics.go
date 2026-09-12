@@ -105,24 +105,47 @@ func (s *MetricsService) UpdateMetric(mType, name string, value string) (string,
 }
 
 func (s *MetricsService) UpdateMetricJSON(m models.Metrics) (models.Metrics, error) {
-	if m.ID == "" {
-		return models.Metrics{}, fmt.Errorf("metric id is required")
+	if err := validateMetric(m); err != nil {
+		return models.Metrics{}, err
 	}
 
 	switch m.MType {
 	case models.Gauge:
-		if m.Value == nil {
-			return models.Metrics{}, fmt.Errorf("value is required for gauge")
-		}
 		v := s.repo.UpdateGauge(m.ID, *m.Value)
 		return models.Metrics{ID: m.ID, MType: models.Gauge, Value: &v}, nil
 	case models.Counter:
-		if m.Delta == nil {
-			return models.Metrics{}, fmt.Errorf("delta is required for counter")
-		}
 		d := s.repo.UpdateCounter(m.ID, *m.Delta)
 		return models.Metrics{ID: m.ID, MType: models.Counter, Delta: &d}, nil
 	default:
 		return models.Metrics{}, fmt.Errorf("unknown metric type: %s", m.MType)
 	}
+}
+
+func (s *MetricsService) UpdateMetrics(metrics []models.Metrics) error {
+	for _, m := range metrics {
+		if err := validateMetric(m); err != nil {
+			return err
+		}
+	}
+	return s.repo.UpdateMetrics(metrics)
+}
+
+func validateMetric(m models.Metrics) error {
+	if m.ID == "" {
+		return fmt.Errorf("metric id is required")
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if m.Value == nil {
+			return fmt.Errorf("value is required for gauge")
+		}
+	case models.Counter:
+		if m.Delta == nil {
+			return fmt.Errorf("delta is required for counter")
+		}
+	default:
+		return fmt.Errorf("unknown metric type: %s", m.MType)
+	}
+	return nil
 }

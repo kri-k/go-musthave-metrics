@@ -61,13 +61,14 @@ func TestPoll_UpdatesRandomValue(t *testing.T) {
 
 func TestReport_SendsMetricsToServer(t *testing.T) {
 	var mu sync.Mutex
-	received := make([]models.Metrics, 0)
+	var requests int
+	var received []models.Metrics
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		assert.Equal(t, "/update", r.URL.Path)
+		assert.Equal(t, "/updates/", r.URL.Path)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
 		assert.Contains(t, r.Header.Get("Accept-Encoding"), "gzip")
@@ -79,16 +80,16 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 		body, err := io.ReadAll(gr)
 		require.NoError(t, err)
 
-		var m models.Metrics
-		require.NoError(t, json.Unmarshal(body, &m))
+		var metrics []models.Metrics
+		require.NoError(t, json.Unmarshal(body, &metrics))
 
 		mu.Lock()
-		received = append(received, m)
+		requests++
+		received = metrics
 		mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(m)
 	}))
 	defer server.Close()
 
@@ -99,6 +100,7 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	require.Equal(t, 1, requests, "expected a single batch request")
 	require.NotEmpty(t, received, "expected metrics to be sent to server")
 
 	foundPollCount := false
@@ -117,4 +119,18 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 
 	assert.True(t, foundPollCount, "expected PollCount counter to be sent")
 	assert.True(t, foundAlloc, "expected Alloc gauge to be sent")
+}
+
+func TestReport_DoesNotSendEmptyBatch(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	a := agent.NewAgentWithConfig(server.URL, 0, 0)
+	a.Report()
+
+	assert.False(t, called, "expected empty batch not to be sent")
 }

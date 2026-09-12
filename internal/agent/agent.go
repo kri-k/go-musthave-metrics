@@ -174,34 +174,40 @@ func (a *Agent) Report() {
 	a.counters["PollCount"] = 0
 	a.mu.Unlock()
 
-	logger.Log.Info("reporting metrics...")
+	metrics := make([]models.Metrics, 0, len(gauges)+len(counters))
 	for name, value := range gauges {
 		v := value
-		a.sendMetric(models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Value: &v,
 		})
 	}
-
 	for name, value := range counters {
 		d := value
-		a.sendMetric(models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Counter,
 			Delta: &d,
 		})
 	}
-}
 
-func (a *Agent) sendMetric(m models.Metrics) {
-	body, err := compressJSON(m)
-	if err != nil {
-		logger.Sugar.Errorf("failed to compress metric: %s", err)
+	if len(metrics) == 0 {
 		return
 	}
 
-	url := fmt.Sprintf("%s/update", a.serverAddr)
+	logger.Log.Info("reporting metrics...")
+	a.sendMetrics(metrics)
+}
+
+func (a *Agent) sendMetrics(metrics []models.Metrics) {
+	body, err := compressJSON(metrics)
+	if err != nil {
+		logger.Sugar.Errorf("failed to compress metrics: %s", err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/updates/", a.serverAddr)
 	r, err := a.client.R().
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Content-Encoding", "gzip").
@@ -209,9 +215,9 @@ func (a *Agent) sendMetric(m models.Metrics) {
 		SetBody(body).
 		Post(url)
 	if err != nil {
-		logger.Sugar.Errorf("failed to send metric: %s", err)
+		logger.Sugar.Errorf("failed to send metrics: %s", err)
 	} else if r.StatusCode() != http.StatusOK {
-		logger.Sugar.Errorf("failed to send metric: response status %s", r.Status())
+		logger.Sugar.Errorf("failed to send metrics: response status %s", r.Status())
 	}
 }
 
