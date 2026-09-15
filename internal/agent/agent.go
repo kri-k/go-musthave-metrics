@@ -17,6 +17,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/kri-k/go-musthave-metrics/internal/logger"
 	models "github.com/kri-k/go-musthave-metrics/internal/model"
+	"github.com/kri-k/go-musthave-metrics/internal/retry"
 )
 
 const (
@@ -208,16 +209,23 @@ func (a *Agent) sendMetrics(metrics []models.Metrics) {
 	}
 
 	url := fmt.Sprintf("%s/updates/", a.serverAddr)
-	r, err := a.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
-		SetHeader("Accept-Encoding", "gzip").
-		SetBody(body).
-		Post(url)
+	err = retry.Do(func() error {
+		r, err := a.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetHeader("Accept-Encoding", "gzip").
+			SetBody(body).
+			Post(url)
+		if err != nil {
+			return err
+		}
+		if r.StatusCode() != http.StatusOK {
+			return fmt.Errorf("response status %s", r.Status())
+		}
+		return nil
+	}, retry.IsConnectionError)
 	if err != nil {
 		logger.Sugar.Errorf("failed to send metrics: %s", err)
-	} else if r.StatusCode() != http.StatusOK {
-		logger.Sugar.Errorf("failed to send metrics: response status %s", r.Status())
 	}
 }
 

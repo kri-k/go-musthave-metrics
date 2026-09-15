@@ -121,6 +121,21 @@ func TestReport_SendsMetricsToServer(t *testing.T) {
 	assert.True(t, foundAlloc, "expected Alloc gauge to be sent")
 }
 
+func TestReport_DoesNotRetryOnHTTPStatusError(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	a := agent.NewAgentWithConfig(server.URL, 0, 0)
+	a.Poll()
+	a.Report()
+
+	assert.Equal(t, 1, requests, "HTTP status errors must not be retried")
+}
+
 func TestReport_DoesNotSendEmptyBatch(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
