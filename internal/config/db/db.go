@@ -41,7 +41,15 @@ func NewPostgres(dsn string) (*sql.DB, error) {
 }
 
 func runMigrations(database *sql.DB) error {
-	driver, err := postgres.WithInstance(database, &postgres.Config{})
+	ctx := context.Background()
+	conn, err := database.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Close()
+
+	// The migrator owns only this connection, not the application's pool.
+	driver, err := postgres.WithConnection(ctx, conn, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("create migrate driver: %w", err)
 	}
@@ -53,6 +61,7 @@ func runMigrations(database *sql.DB) error {
 
 	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
 	if err != nil {
+		_ = source.Close()
 		return fmt.Errorf("create migrator: %w", err)
 	}
 	defer func() {

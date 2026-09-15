@@ -52,7 +52,8 @@ func main() {
 
 	database, err := db.NewPostgres(databaseDSN)
 	if err != nil {
-		logger.Sugar.Fatalln(err.Error())
+		logger.Sugar.Error(err.Error())
+		database = nil
 	}
 	if database != nil {
 		defer database.Close()
