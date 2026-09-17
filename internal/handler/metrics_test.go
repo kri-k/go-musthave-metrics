@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/kri-k/go-musthave-metrics/internal/handler"
 	"github.com/kri-k/go-musthave-metrics/internal/middleware"
 	models "github.com/kri-k/go-musthave-metrics/internal/model"
@@ -26,9 +27,11 @@ func newTestRouter() (http.Handler, repository.Repository) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Gzip)
+	r.Use(chiMiddleware.StripSlashes)
 	r.Get("/", h.Index)
 	r.Post("/update", h.UpdateJSON)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
+	r.Post("/updates", h.UpdatesJSON)
 	r.Post("/value", h.ValueJSON)
 	r.Get("/value/{type}/{name}", h.Value)
 
@@ -305,6 +308,115 @@ func TestValueJSON_GzipResponse(t *testing.T) {
 	require.NoError(t, json.Unmarshal(decoded, &resp))
 	require.NotNil(t, resp.Value)
 	assert.Equal(t, 100.0, *resp.Value)
+}
+
+func TestUpdatesJSON_BatchSuccess(t *testing.T) {
+	router, storage := newTestRouter()
+
+	gaugeValue := 42.5
+	counterDelta := int64(7)
+	body, err := json.Marshal([]models.Metrics{
+		{ID: "Alloc", MType: models.Gauge, Value: &gaugeValue},
+		{ID: "PollCount", MType: models.Counter, Delta: &counterDelta},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/updates/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	v, ok := storage.GetGauge("Alloc")
+	assert.True(t, ok)
+	assert.Equal(t, gaugeValue, v)
+
+	c, ok := storage.GetCounter("PollCount")
+	assert.True(t, ok)
+	assert.Equal(t, int64(7), c)
+}
+
+func TestUpdatesJSON_DuplicateCounter(t *testing.T) {
+	router, storage := newTestRouter()
+
+	first := int64(3)
+	second := int64(5)
+	body, err := json.Marshal([]models.Metrics{
+		{ID: "PollCount", MType: models.Counter, Delta: &first},
+		{ID: "PollCount", MType: models.Counter, Delta: &second},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/updates", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	v, ok := storage.GetCounter("PollCount")
+	assert.True(t, ok)
+	assert.Equal(t, int64(8), v)
+}
+
+func TestUpdatesJSON_InvalidType(t *testing.T) {
+	router, _ := newTestRouter()
+
+	delta := int64(1)
+	body, err := json.Marshal([]models.Metrics{
+		{ID: "bad", MType: "unknown", Delta: &delta},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/updates/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestUpdatesJSON_EmptyBatch(t *testing.T) {
+	router, _ := newTestRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/updates/", bytes.NewReader([]byte("[]")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestUpdatesJSON_GzipRequest(t *testing.T) {
+	router, storage := newTestRouter()
+
+	value := 99.0
+	payload, err := json.Marshal([]models.Metrics{
+		{ID: "Alloc", MType: models.Gauge, Value: &value},
+	})
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err = zw.Write(payload)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/updates/", &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	v, ok := storage.GetGauge("Alloc")
+	assert.True(t, ok)
+	assert.Equal(t, value, v)
 }
 
 func TestIndex_GzipHTMLResponse(t *testing.T) {
