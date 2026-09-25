@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -440,4 +442,42 @@ func TestIndex_GzipHTMLResponse(t *testing.T) {
 	body, err := io.ReadAll(gr)
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "Alloc")
+}
+
+// Override batch writes to exercise the real handler and service with a failing storage.
+type failingBatchRepository struct {
+	repository.Repository
+	calls int
+}
+
+func (r *failingBatchRepository) UpdateMetrics([]models.Metrics) error {
+	r.calls++
+	return fmt.Errorf("write batch: %w", fmt.Errorf("database unavailable"))
+}
+
+func TestUpdatesJSON_ErrorStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		body   string
+		status int
+		calls  int
+	}{
+		{"storage failure", `[{"id":"Alloc","type":"gauge","value":1}]`, http.StatusInternalServerError, 1},
+		{"missing id", `[{"type":"gauge","value":1}]`, http.StatusBadRequest, 0},
+		{"missing value", `[{"id":"Alloc","type":"gauge"}]`, http.StatusBadRequest, 0},
+		{"missing delta", `[{"id":"PollCount","type":"counter"}]`, http.StatusBadRequest, 0},
+		{"unknown type", `[{"id":"Alloc","type":"unknown"}]`, http.StatusBadRequest, 0},
+		{"invalid JSON", `[`, http.StatusBadRequest, 0},
+		{"invalid later metric", `[{"id":"Alloc","type":"gauge","value":1},{"id":"PollCount","type":"counter"}]`, http.StatusBadRequest, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &failingBatchRepository{Repository: repository.NewMemStorage()}
+			h := handler.NewMetricsHandler(service.NewMetricsService(repo))
+			rec := httptest.NewRecorder()
+			h.UpdatesJSON(rec, httptest.NewRequest(http.MethodPost, "/updates", strings.NewReader(tt.body)))
+			require.Equal(t, tt.status, rec.Code, rec.Body.String())
+			require.Equal(t, tt.calls, repo.calls)
+		})
+	}
 }

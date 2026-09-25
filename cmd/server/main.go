@@ -52,8 +52,7 @@ func main() {
 
 	database, err := db.NewPostgres(databaseDSN)
 	if err != nil {
-		logger.Sugar.Error(err.Error())
-		database = nil
+		logger.Sugar.Fatalf("failed to initialize database: %v", err)
 	}
 	if database != nil {
 		defer database.Close()

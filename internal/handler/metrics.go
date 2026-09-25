@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -116,7 +117,11 @@ func (h *MetricsHandler) UpdatesJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.UpdateMetrics(metrics); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrValidation) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 

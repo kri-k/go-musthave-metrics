@@ -14,7 +14,7 @@ import (
 
 const queryTimeout = 3 * time.Second
 
-var pgClassifier = pgerrors.NewPostgresErrorClassifier()
+var pgClassifier = pgerrors.New()
 
 type PostgresStorage struct {
 	db *sql.DB

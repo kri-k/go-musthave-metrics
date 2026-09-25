@@ -7,20 +7,20 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-type PGErrorClassification int
+type Classification int
 
 const (
-	NonRetriable PGErrorClassification = iota
+	NonRetriable Classification = iota
 	Retriable
 )
 
-type PostgresErrorClassifier struct{}
+type Classifier struct{}
 
-func NewPostgresErrorClassifier() *PostgresErrorClassifier {
-	return &PostgresErrorClassifier{}
+func New() *Classifier {
+	return &Classifier{}
 }
 
-func (c *PostgresErrorClassifier) Classify(err error) PGErrorClassification {
+func (c *Classifier) Classify(err error) Classification {
 	if err == nil {
 		return NonRetriable
 	}
@@ -37,7 +37,7 @@ func (c *PostgresErrorClassifier) Classify(err error) PGErrorClassification {
 	return NonRetriable
 }
 
-func ClassifyPgError(pgErr *pgconn.PgError) PGErrorClassification {
+func ClassifyPgError(pgErr *pgconn.PgError) Classification {
 	// Коды ошибок PostgreSQL: https://www.postgresql.org/docs/current/errcodes-appendix.html
 	if pgerrcode.IsConnectionException(pgErr.Code) {
 		return Retriable

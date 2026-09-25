@@ -10,12 +10,12 @@ import (
 )
 
 func TestClassify(t *testing.T) {
-	classifier := NewPostgresErrorClassifier()
+	classifier := New()
 
 	tests := []struct {
 		name string
 		err  error
-		want PGErrorClassification
+		want Classification
 	}{
 		{
 			name: "nil",

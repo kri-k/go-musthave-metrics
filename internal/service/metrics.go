@@ -2,6 +2,7 @@ package service
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/kri-k/go-musthave-metrics/internal/repository"
 	"github.com/kri-k/go-musthave-metrics/internal/util"
 )
+
+// ErrValidation identifies invalid metric input.
+var ErrValidation = errors.New("invalid metric")
 
 type MetricsService struct {
 	repo repository.Repository
@@ -132,20 +136,20 @@ func (s *MetricsService) UpdateMetrics(metrics []models.Metrics) error {
 
 func validateMetric(m models.Metrics) error {
 	if m.ID == "" {
-		return fmt.Errorf("metric id is required")
+		return fmt.Errorf("%w: metric id is required", ErrValidation)
 	}
 
 	switch m.MType {
 	case models.Gauge:
 		if m.Value == nil {
-			return fmt.Errorf("value is required for gauge")
+			return fmt.Errorf("%w: value is required for gauge", ErrValidation)
 		}
 	case models.Counter:
 		if m.Delta == nil {
-			return fmt.Errorf("delta is required for counter")
+			return fmt.Errorf("%w: delta is required for counter", ErrValidation)
 		}
 	default:
-		return fmt.Errorf("unknown metric type: %s", m.MType)
+		return fmt.Errorf("%w: unknown metric type: %s", ErrValidation, m.MType)
 	}
 	return nil
 }
