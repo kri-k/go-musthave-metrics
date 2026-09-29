@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -105,6 +106,28 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(updated); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+func (h *MetricsHandler) UpdatesJSON(w http.ResponseWriter, r *http.Request) {
+	var metrics []models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.UpdateMetrics(metrics); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrValidation) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 

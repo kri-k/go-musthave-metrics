@@ -1,6 +1,9 @@
 package repository
 
-import "github.com/kri-k/go-musthave-metrics/internal/logger"
+import (
+	"github.com/kri-k/go-musthave-metrics/internal/logger"
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
+)
 
 type SyncFileStorage struct {
 	*MemStorage
@@ -25,6 +28,16 @@ func (s *SyncFileStorage) UpdateCounter(name string, value int64) int64 {
 		logger.Sugar.Errorw("failed to save metrics", "error", err)
 	}
 	return v
+}
+
+func (s *SyncFileStorage) UpdateMetrics(metrics []models.Metrics) error {
+	if err := s.MemStorage.UpdateMetrics(metrics); err != nil {
+		return err
+	}
+	if err := s.MemStorage.SaveToFile(s.path); err != nil {
+		logger.Sugar.Errorw("failed to save metrics", "error", err)
+	}
+	return nil
 }
 
 var _ Repository = (*SyncFileStorage)(nil)

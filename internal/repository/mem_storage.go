@@ -1,6 +1,10 @@
 package repository
 
-import "sync"
+import (
+	"sync"
+
+	models "github.com/kri-k/go-musthave-metrics/internal/model"
+)
 
 type MemStorage struct {
 	mu       sync.RWMutex
@@ -41,6 +45,25 @@ func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	defer s.mu.RUnlock()
 	v, ok := s.counters[name]
 	return v, ok
+}
+
+func (s *MemStorage) UpdateMetrics(metrics []models.Metrics) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value != nil {
+				s.gauges[m.ID] = *m.Value
+			}
+		case models.Counter:
+			if m.Delta != nil {
+				s.counters[m.ID] += *m.Delta
+			}
+		}
+	}
+	return nil
 }
 
 func (s *MemStorage) GetGauges() []GaugeMetric {
