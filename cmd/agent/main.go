@@ -17,6 +17,7 @@ var (
 	flagAddr           = flag.String("a", "localhost:8080", "address and port to run server")
 	flagReportInterval = flag.Int("r", 10, "frequency of sending metrics to the server")
 	flagPollInterval   = flag.Int("p", 2, "frequency of polling metrics from the runtime package")
+	flagKey            = flag.String("k", "", "key for HMAC-SHA256 signatures")
 )
 
 func main() {
@@ -40,7 +41,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	a := agent.NewAgentWithConfig(addr, pollInterval, reportInterval)
+	a := agent.NewAgentWithConfig(addr, pollInterval, reportInterval, util.GetEnvOrDefaultString("KEY", *flagKey))
 	a.Run(ctx)
 	logger.Log.Info("agent stopped")
 }

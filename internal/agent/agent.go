@@ -18,6 +18,7 @@ import (
 	"github.com/kri-k/go-musthave-metrics/internal/logger"
 	models "github.com/kri-k/go-musthave-metrics/internal/model"
 	"github.com/kri-k/go-musthave-metrics/internal/retry"
+	"github.com/kri-k/go-musthave-metrics/internal/signature"
 )
 
 const (
@@ -31,6 +32,7 @@ type Agent struct {
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	client         *resty.Client
+	key            string
 
 	mu       sync.Mutex
 	gauges   map[string]float64
@@ -41,7 +43,11 @@ func NewAgent() *Agent {
 	return NewAgentWithConfig("", 0, 0)
 }
 
-func NewAgentWithConfig(serverAddr string, pollIntervalSec, reportIntervalSec int) *Agent {
+func NewAgentWithConfig(serverAddr string, pollIntervalSec, reportIntervalSec int, key ...string) *Agent {
+	var signingKey string
+	if len(key) > 0 {
+		signingKey = key[0]
+	}
 	if serverAddr == "" {
 		serverAddr = defaultServerAddr
 	} else {
@@ -59,6 +65,7 @@ func NewAgentWithConfig(serverAddr string, pollIntervalSec, reportIntervalSec in
 		pollInterval:   time.Duration(pollIntervalSec) * time.Second,
 		reportInterval: time.Duration(reportIntervalSec) * time.Second,
 		client:         resty.New(),
+		key:            signingKey,
 		gauges:         make(map[string]float64),
 		counters:       make(map[string]int64),
 	}
@@ -210,12 +217,15 @@ func (a *Agent) sendMetrics(metrics []models.Metrics) {
 
 	url := fmt.Sprintf("%s/updates/", a.serverAddr)
 	err = retry.Do(func() error {
-		r, err := a.client.R().
+		request := a.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetHeader("Accept-Encoding", "gzip").
-			SetBody(body).
-			Post(url)
+			SetBody(body)
+		if a.key != "" {
+			request.SetHeader(signature.Header, signature.Sign(body, a.key))
+		}
+		r, err := request.Post(url)
 		if err != nil {
 			return err
 		}

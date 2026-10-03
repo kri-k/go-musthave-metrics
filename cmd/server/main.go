@@ -28,6 +28,7 @@ var (
 	flagFileStorage   = flag.String("f", "./metrics-db.json", "path to file for metrics storage")
 	flagRestore       = flag.Bool("r", true, "restore previously saved metrics on startup")
 	flagDatabaseDSN   = flag.String("d", "", "PostgreSQL connection string (DATABASE_DSN)")
+	flagKey           = flag.String("k", "", "key for HMAC-SHA256 signatures")
 )
 
 func main() {
@@ -66,6 +67,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(logger.WithLogging)
+	r.Use(middleware.HashSHA256(util.GetEnvOrDefaultString("KEY", *flagKey)))
 	r.Use(middleware.Gzip)
 	r.Use(chiMiddleware.StripSlashes)
 	r.Get("/", h.Index)
