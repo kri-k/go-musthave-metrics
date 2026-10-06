@@ -19,6 +19,8 @@ import (
 	models "github.com/kri-k/go-musthave-metrics/internal/model"
 	"github.com/kri-k/go-musthave-metrics/internal/retry"
 	"github.com/kri-k/go-musthave-metrics/internal/signature"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 const (
@@ -33,6 +35,7 @@ type Agent struct {
 	reportInterval time.Duration
 	client         *resty.Client
 	key            string
+	rateLimit      int
 
 	mu       sync.Mutex
 	gauges   map[string]float64
@@ -66,9 +69,18 @@ func NewAgentWithConfig(serverAddr string, pollIntervalSec, reportIntervalSec in
 		reportInterval: time.Duration(reportIntervalSec) * time.Second,
 		client:         resty.New(),
 		key:            signingKey,
+		rateLimit:      1,
 		gauges:         make(map[string]float64),
 		counters:       make(map[string]int64),
 	}
+}
+
+func NewAgentWithRateLimit(serverAddr string, pollIntervalSec, reportIntervalSec, rateLimit int, key string) *Agent {
+	a := NewAgentWithConfig(serverAddr, pollIntervalSec, reportIntervalSec, key)
+	if rateLimit > 0 {
+		a.rateLimit = rateLimit
+	}
+	return a
 }
 
 func normalizeServerAddr(addr string) string {
@@ -84,18 +96,41 @@ func (a *Agent) Run(ctx context.Context) {
 		"pollInterval", a.pollInterval,
 		"reportInterval", a.reportInterval,
 		"serverAddr", a.serverAddr,
+		"rateLimit", a.rateLimit,
 	)
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	jobs := make(chan []models.Metrics, a.rateLimit)
+	wg.Add(3 + a.rateLimit)
+	for i := 0; i < a.rateLimit; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case metrics, ok := <-jobs:
+					if !ok {
+						return
+					}
+					a.sendMetrics(ctx, metrics)
+				}
+			}
+		}()
+	}
+	go func() {
+		defer wg.Done()
+		a.systemPollLoop(ctx)
+	}()
 	go func() {
 		defer wg.Done()
 		a.pollLoop(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		a.reportLoop(ctx)
+		defer close(jobs)
+		a.reportLoop(ctx, jobs)
 	}()
 
 	wg.Wait()
@@ -117,18 +152,57 @@ func (a *Agent) pollLoop(ctx context.Context) {
 	}
 }
 
-func (a *Agent) reportLoop(ctx context.Context) {
+func (a *Agent) reportLoop(ctx context.Context, jobs chan<- []models.Metrics) {
 	ticker := time.NewTicker(a.reportInterval)
 	defer ticker.Stop()
-
-	a.Report()
-
 	for {
+		metrics := a.snapshot()
+		if len(metrics) > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- metrics:
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			a.Report()
+		}
+	}
+}
+
+func (a *Agent) systemPollLoop(ctx context.Context) {
+	ticker := time.NewTicker(a.pollInterval)
+	defer ticker.Stop()
+	for {
+		a.pollSystem(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *Agent) pollSystem(ctx context.Context) {
+	memory, memoryErr := mem.VirtualMemoryWithContext(ctx)
+	utilization, cpuErr := cpu.PercentWithContext(ctx, 0, true)
+	if memoryErr != nil {
+		logger.Sugar.Errorf("failed to collect memory metrics: %s", memoryErr)
+	}
+	if cpuErr != nil {
+		logger.Sugar.Errorf("failed to collect CPU metrics: %s", cpuErr)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if memoryErr == nil {
+		a.gauges["TotalMemory"] = float64(memory.Total)
+		a.gauges["FreeMemory"] = float64(memory.Free)
+	}
+	if cpuErr == nil {
+		for i, value := range utilization {
+			a.gauges[fmt.Sprintf("CPUutilization%d", i+1)] = value
 		}
 	}
 }
@@ -174,12 +248,18 @@ func (a *Agent) Poll() {
 }
 
 func (a *Agent) Report() {
+	if metrics := a.snapshot(); len(metrics) > 0 {
+		a.sendMetrics(context.Background(), metrics)
+	}
+}
+
+func (a *Agent) snapshot() []models.Metrics {
 	a.mu.Lock()
 	gauges := make(map[string]float64, len(a.gauges))
 	maps.Copy(gauges, a.gauges)
 	counters := make(map[string]int64, len(a.counters))
 	maps.Copy(counters, a.counters)
-	a.counters["PollCount"] = 0
+	clear(a.counters)
 	a.mu.Unlock()
 
 	metrics := make([]models.Metrics, 0, len(gauges)+len(counters))
@@ -200,15 +280,10 @@ func (a *Agent) Report() {
 		})
 	}
 
-	if len(metrics) == 0 {
-		return
-	}
-
-	logger.Log.Info("reporting metrics...")
-	a.sendMetrics(metrics)
+	return metrics
 }
 
-func (a *Agent) sendMetrics(metrics []models.Metrics) {
+func (a *Agent) sendMetrics(ctx context.Context, metrics []models.Metrics) {
 	body, err := compressJSON(metrics)
 	if err != nil {
 		logger.Sugar.Errorf("failed to compress metrics: %s", err)
@@ -216,8 +291,9 @@ func (a *Agent) sendMetrics(metrics []models.Metrics) {
 	}
 
 	url := fmt.Sprintf("%s/updates/", a.serverAddr)
-	err = retry.Do(func() error {
+	err = retry.DoWithContext(ctx, func() error {
 		request := a.client.R().
+			SetContext(ctx).
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetHeader("Accept-Encoding", "gzip").
